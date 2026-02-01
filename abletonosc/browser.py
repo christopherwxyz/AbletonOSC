@@ -108,6 +108,49 @@ class BrowserHandler(AbletonOSCHandler):
                 return found
         return None
 
+    def _load_from_category(self, category, name: str, category_name: str):
+        """Generic method to load an item by name from a browser category."""
+        item = self._find_item_by_name(category, name)
+        if not item:
+            self.logger.warning(f"{category_name} not found: {name}")
+            return None
+
+        loadable = self._get_first_loadable_child(item)
+        if not loadable:
+            self.logger.warning(f"No loadable item found for {category_name}: {name}")
+            return None
+
+        self.browser.load_item(loadable)
+        self.logger.info(f"Loaded {category_name}: {loadable.name}")
+        return (loadable.name,)
+
+    def _load_first_from_preferred(self, category, preferred_names: list, category_name: str):
+        """Load the first available item from a list of preferred names."""
+        for name in preferred_names:
+            item = self._find_item_by_name(category, name)
+            if item:
+                loadable = self._get_first_loadable_child(item)
+                if loadable:
+                    self.browser.load_item(loadable)
+                    self.logger.info(f"Loaded default {category_name}: {loadable.name}")
+                    return (loadable.name,)
+
+        # Fallback: try to load any item from category
+        loadable = self._get_first_loadable_child(category)
+        if loadable:
+            self.browser.load_item(loadable)
+            self.logger.info(f"Loaded {category_name}: {loadable.name}")
+            return (loadable.name,)
+
+        self.logger.warning(f"No default {category_name} found")
+        return None
+
+    def _list_category_children(self, category, category_name: str):
+        """List names of children in a browser category."""
+        names = [item.name for item in category.children]
+        self.logger.info(f"Found {len(names)} {category_name}")
+        return tuple(names)
+
     def _load_instrument(self, params: Tuple[Any]):
         """
         Load an instrument by name onto the selected track.
@@ -189,28 +232,11 @@ class BrowserHandler(AbletonOSCHandler):
         Usage: /live/browser/load_default_instrument
         """
         try:
-            browser = self.browser
-
             # Prefer synths over samplers - synths make sound without samples
-            # Simpler/Sampler are samplers that need samples to make sound
-            for name in ["Drift", "Analog", "Wavetable", "Operator", "Tension", "Collision"]:
-                item = self._find_item_by_name(browser.instruments, name)
-                if item:
-                    loadable = self._get_first_loadable_child(item)
-                    if loadable:
-                        browser.load_item(loadable)
-                        self.logger.info(f"Loaded default instrument: {loadable.name}")
-                        return (loadable.name,)
-
-            # Fallback: try to load any instrument
-            loadable = self._get_first_loadable_child(browser.instruments)
-            if loadable:
-                browser.load_item(loadable)
-                self.logger.info(f"Loaded instrument: {loadable.name}")
-                return (loadable.name,)
-
-            self.logger.warning("No default instrument found")
-
+            preferred = ["Drift", "Analog", "Wavetable", "Operator", "Tension", "Collision"]
+            return self._load_first_from_preferred(
+                self.browser.instruments, preferred, "instrument"
+            )
         except Exception as e:
             self.logger.error(f"Error loading default instrument: {e}")
 
@@ -228,25 +254,10 @@ class BrowserHandler(AbletonOSCHandler):
         if len(params) < 1:
             self.logger.error("load_audio_effect requires effect name")
             return
-
-        name = str(params[0])
-        self.logger.info(f"Loading audio effect: {name}")
-
         try:
-            browser = self.browser
-            item = self._find_item_by_name(browser.audio_effects, name)
-
-            if item:
-                loadable = self._get_first_loadable_child(item)
-                if loadable:
-                    browser.load_item(loadable)
-                    self.logger.info(f"Loaded audio effect: {loadable.name}")
-                    return (loadable.name,)
-                else:
-                    self.logger.warning(f"No loadable item found for audio effect: {name}")
-            else:
-                self.logger.warning(f"Audio effect not found: {name}")
-
+            return self._load_from_category(
+                self.browser.audio_effects, str(params[0]), "audio effect"
+            )
         except Exception as e:
             self.logger.error(f"Error loading audio effect: {e}")
 
@@ -260,25 +271,10 @@ class BrowserHandler(AbletonOSCHandler):
         if len(params) < 1:
             self.logger.error("load_midi_effect requires effect name")
             return
-
-        name = str(params[0])
-        self.logger.info(f"Loading MIDI effect: {name}")
-
         try:
-            browser = self.browser
-            item = self._find_item_by_name(browser.midi_effects, name)
-
-            if item:
-                loadable = self._get_first_loadable_child(item)
-                if loadable:
-                    browser.load_item(loadable)
-                    self.logger.info(f"Loaded MIDI effect: {loadable.name}")
-                    return (loadable.name,)
-                else:
-                    self.logger.warning(f"No loadable item found for MIDI effect: {name}")
-            else:
-                self.logger.warning(f"MIDI effect not found: {name}")
-
+            return self._load_from_category(
+                self.browser.midi_effects, str(params[0]), "MIDI effect"
+            )
         except Exception as e:
             self.logger.error(f"Error loading MIDI effect: {e}")
 
@@ -289,27 +285,10 @@ class BrowserHandler(AbletonOSCHandler):
         Usage: /live/browser/load_default_audio_effect
         """
         try:
-            browser = self.browser
-
-            # Prefer common, useful effects
-            for name in ["Reverb", "Delay", "EQ Eight", "Compressor", "Utility"]:
-                item = self._find_item_by_name(browser.audio_effects, name)
-                if item:
-                    loadable = self._get_first_loadable_child(item)
-                    if loadable:
-                        browser.load_item(loadable)
-                        self.logger.info(f"Loaded default audio effect: {loadable.name}")
-                        return (loadable.name,)
-
-            # Fallback: try to load any audio effect
-            loadable = self._get_first_loadable_child(browser.audio_effects)
-            if loadable:
-                browser.load_item(loadable)
-                self.logger.info(f"Loaded audio effect: {loadable.name}")
-                return (loadable.name,)
-
-            self.logger.warning("No default audio effect found")
-
+            preferred = ["Reverb", "Delay", "EQ Eight", "Compressor", "Utility"]
+            return self._load_first_from_preferred(
+                self.browser.audio_effects, preferred, "audio effect"
+            )
         except Exception as e:
             self.logger.error(f"Error loading default audio effect: {e}")
 
@@ -320,39 +299,12 @@ class BrowserHandler(AbletonOSCHandler):
         Usage: /live/browser/load_default_midi_effect
         """
         try:
-            browser = self.browser
-
-            # Prefer common, useful MIDI effects
-            for name in ["Arpeggiator", "Chord", "Scale", "Note Length", "Pitch"]:
-                item = self._find_item_by_name(browser.midi_effects, name)
-                if item:
-                    loadable = self._get_first_loadable_child(item)
-                    if loadable:
-                        browser.load_item(loadable)
-                        self.logger.info(f"Loaded default MIDI effect: {loadable.name}")
-                        return (loadable.name,)
-
-            # Fallback: try to load any MIDI effect
-            loadable = self._get_first_loadable_child(browser.midi_effects)
-            if loadable:
-                browser.load_item(loadable)
-                self.logger.info(f"Loaded MIDI effect: {loadable.name}")
-                return (loadable.name,)
-
-            self.logger.warning("No default MIDI effect found")
-
+            preferred = ["Arpeggiator", "Chord", "Scale", "Note Length", "Pitch"]
+            return self._load_first_from_preferred(
+                self.browser.midi_effects, preferred, "MIDI effect"
+            )
         except Exception as e:
             self.logger.error(f"Error loading default MIDI effect: {e}")
-
-    def _list_browser_items(self, parent, max_depth: int = 2, current_depth: int = 0):
-        """Helper to list browser items up to a certain depth."""
-        items = []
-        for item in parent.children:
-            items.append(item.name)
-            if current_depth < max_depth and item.children:
-                for child in item.children:
-                    items.append(f"  {child.name}")
-        return items
 
     def _list_audio_effects(self, params: Tuple[Any]):
         """
@@ -362,13 +314,9 @@ class BrowserHandler(AbletonOSCHandler):
         Returns: Tuple of effect names
         """
         try:
-            browser = self.browser
-            effects = []
-            for item in browser.audio_effects.children:
-                effects.append(item.name)
-            self.logger.info(f"Found {len(effects)} audio effect categories")
-            return tuple(effects)
-
+            return self._list_category_children(
+                self.browser.audio_effects, "audio effect categories"
+            )
         except Exception as e:
             self.logger.error(f"Error listing audio effects: {e}")
             return ()
@@ -381,13 +329,9 @@ class BrowserHandler(AbletonOSCHandler):
         Returns: Tuple of effect names
         """
         try:
-            browser = self.browser
-            effects = []
-            for item in browser.midi_effects.children:
-                effects.append(item.name)
-            self.logger.info(f"Found {len(effects)} MIDI effect categories")
-            return tuple(effects)
-
+            return self._list_category_children(
+                self.browser.midi_effects, "MIDI effect categories"
+            )
         except Exception as e:
             self.logger.error(f"Error listing MIDI effects: {e}")
             return ()
@@ -406,25 +350,10 @@ class BrowserHandler(AbletonOSCHandler):
         if len(params) < 1:
             self.logger.error("load_sound requires sound name")
             return
-
-        name = str(params[0])
-        self.logger.info(f"Loading sound: {name}")
-
         try:
-            browser = self.browser
-            item = self._find_item_by_name(browser.sounds, name)
-
-            if item:
-                loadable = self._get_first_loadable_child(item)
-                if loadable:
-                    browser.load_item(loadable)
-                    self.logger.info(f"Loaded sound: {loadable.name}")
-                    return (loadable.name,)
-                else:
-                    self.logger.warning(f"No loadable item found for sound: {name}")
-            else:
-                self.logger.warning(f"Sound not found: {name}")
-
+            return self._load_from_category(
+                self.browser.sounds, str(params[0]), "sound"
+            )
         except Exception as e:
             self.logger.error(f"Error loading sound: {e}")
 
@@ -436,13 +365,9 @@ class BrowserHandler(AbletonOSCHandler):
         Returns: Tuple of sound category names
         """
         try:
-            browser = self.browser
-            sounds = []
-            for item in browser.sounds.children:
-                sounds.append(item.name)
-            self.logger.info(f"Found {len(sounds)} sound categories")
-            return tuple(sounds)
-
+            return self._list_category_children(
+                self.browser.sounds, "sound categories"
+            )
         except Exception as e:
             self.logger.error(f"Error listing sounds: {e}")
             return ()
@@ -461,25 +386,10 @@ class BrowserHandler(AbletonOSCHandler):
         if len(params) < 1:
             self.logger.error("load_sample requires sample name")
             return
-
-        name = str(params[0])
-        self.logger.info(f"Loading sample: {name}")
-
         try:
-            browser = self.browser
-            item = self._find_item_by_name(browser.samples, name)
-
-            if item:
-                loadable = self._get_first_loadable_child(item)
-                if loadable:
-                    browser.load_item(loadable)
-                    self.logger.info(f"Loaded sample: {loadable.name}")
-                    return (loadable.name,)
-                else:
-                    self.logger.warning(f"No loadable item found for sample: {name}")
-            else:
-                self.logger.warning(f"Sample not found: {name}")
-
+            return self._load_from_category(
+                self.browser.samples, str(params[0]), "sample"
+            )
         except Exception as e:
             self.logger.error(f"Error loading sample: {e}")
 
@@ -493,25 +403,10 @@ class BrowserHandler(AbletonOSCHandler):
         if len(params) < 1:
             self.logger.error("load_clip requires clip name")
             return
-
-        name = str(params[0])
-        self.logger.info(f"Loading clip: {name}")
-
         try:
-            browser = self.browser
-            item = self._find_item_by_name(browser.clips, name)
-
-            if item:
-                loadable = self._get_first_loadable_child(item)
-                if loadable:
-                    browser.load_item(loadable)
-                    self.logger.info(f"Loaded clip: {loadable.name}")
-                    return (loadable.name,)
-                else:
-                    self.logger.warning(f"No loadable item found for clip: {name}")
-            else:
-                self.logger.warning(f"Clip not found: {name}")
-
+            return self._load_from_category(
+                self.browser.clips, str(params[0]), "clip"
+            )
         except Exception as e:
             self.logger.error(f"Error loading clip: {e}")
 
@@ -587,25 +482,10 @@ class BrowserHandler(AbletonOSCHandler):
         if len(params) < 1:
             self.logger.error("load_plugin requires plugin name")
             return
-
-        name = str(params[0])
-        self.logger.info(f"Loading plugin: {name}")
-
         try:
-            browser = self.browser
-            item = self._find_item_by_name(browser.plugins, name)
-
-            if item:
-                loadable = self._get_first_loadable_child(item)
-                if loadable:
-                    browser.load_item(loadable)
-                    self.logger.info(f"Loaded plugin: {loadable.name}")
-                    return (loadable.name,)
-                else:
-                    self.logger.warning(f"No loadable item found for plugin: {name}")
-            else:
-                self.logger.warning(f"Plugin not found: {name}")
-
+            return self._load_from_category(
+                self.browser.plugins, str(params[0]), "plugin"
+            )
         except Exception as e:
             self.logger.error(f"Error loading plugin: {e}")
 
@@ -619,25 +499,10 @@ class BrowserHandler(AbletonOSCHandler):
         if len(params) < 1:
             self.logger.error("load_max_device requires device name")
             return
-
-        name = str(params[0])
-        self.logger.info(f"Loading Max device: {name}")
-
         try:
-            browser = self.browser
-            item = self._find_item_by_name(browser.max_for_live, name)
-
-            if item:
-                loadable = self._get_first_loadable_child(item)
-                if loadable:
-                    browser.load_item(loadable)
-                    self.logger.info(f"Loaded Max device: {loadable.name}")
-                    return (loadable.name,)
-                else:
-                    self.logger.warning(f"No loadable item found for Max device: {name}")
-            else:
-                self.logger.warning(f"Max device not found: {name}")
-
+            return self._load_from_category(
+                self.browser.max_for_live, str(params[0]), "Max device"
+            )
         except Exception as e:
             self.logger.error(f"Error loading Max device: {e}")
 
@@ -649,13 +514,7 @@ class BrowserHandler(AbletonOSCHandler):
         Returns: Tuple of plugin names
         """
         try:
-            browser = self.browser
-            plugins = []
-            for item in browser.plugins.children:
-                plugins.append(item.name)
-            self.logger.info(f"Found {len(plugins)} plugins")
-            return tuple(plugins)
-
+            return self._list_category_children(self.browser.plugins, "plugins")
         except Exception as e:
             self.logger.error(f"Error listing plugins: {e}")
             return ()
@@ -668,13 +527,9 @@ class BrowserHandler(AbletonOSCHandler):
         Returns: Tuple of M4L device names
         """
         try:
-            browser = self.browser
-            devices = []
-            for item in browser.max_for_live.children:
-                devices.append(item.name)
-            self.logger.info(f"Found {len(devices)} Max for Live devices")
-            return tuple(devices)
-
+            return self._list_category_children(
+                self.browser.max_for_live, "Max for Live devices"
+            )
         except Exception as e:
             self.logger.error(f"Error listing Max for Live devices: {e}")
             return ()
